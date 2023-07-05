@@ -1,7 +1,8 @@
-import flet as ft
-import os
 import glob
-from mutagen.id3 import ID3, TALB
+import os
+
+import flet as ft
+import mutagen.id3
 from slugify import slugify
 
 
@@ -19,6 +20,8 @@ def main(page: ft.Page):
             operation_label.value = 'Выбранные файлы:'
             operation_label.update()
             selected_files_counter = 0
+            progress_bar_container.clean()
+            page.update()
             for f in files:
                 name = os.path.basename(f)
                 selected_files_counter += 1
@@ -51,10 +54,13 @@ def main(page: ft.Page):
             else:
                 pair_operation_label.value = ''
                 pair_operation_label.update()
+            pb = ft.ProgressBar(width=float('inf'))
+            progress_bar_container.clean()
+            progress_bar_container.controls.append(pb)
             for path in selected_files_paths:
                 base_folder_path = os.path.dirname(path)
                 base_name = os.path.basename(path)
-                audio = ID3(path)
+                audio = mutagen.id3.ID3(path)
                 artist = slugify(
                     audio.get('TPE1').text[0],
                     separator='_',
@@ -67,16 +73,22 @@ def main(page: ft.Page):
                 new_path = base_folder_path + f'/{new_name}'
                 os.rename(path, new_path)
                 transliterated_counter += 1
+                pb.value = transliterated_counter * 0.01
+                page.update()
                 selected_files.controls.append(ft.Text(f'{transliterated_counter}. {base_name} → {new_name}'))
                 transliterated_files_path.append(new_path)
 
-            operation_label.value = f'Транслитерированные названия | {transliterated_counter}/{len(selected_files.controls)}:'
+            operation_label.value = f'Транслитерированные названия | ' \
+                                    f'{transliterated_counter}' \
+                                    f'/{len(selected_files.controls)}:'
             operation_label.update()
             selected_files.update()
 
             if create_pairs.value:
                 minus_paths = []
                 plus_paths = []
+                progress_bar_container.controls.append(ft.ProgressBar(width=float('inf'), color=ft.colors.PINK))
+                page.update()
                 for path in transliterated_files_path:
                     name = os.path.basename(path)
                     if '_plus.mp3' in name:
@@ -89,11 +101,13 @@ def main(page: ft.Page):
                     for minus_path in minus_paths:
                         minus_name = f'{os.path.basename(minus_path)}'
                         if plus_name_simple in minus_name:
-                            audio = ID3(minus_path)
-                            audio['TALB'] = TALB(encoding=3, text=[plus_name])
+                            audio = mutagen.id3.ID3(minus_path)
+                            audio['TALB'] = mutagen.id3.TALB(encoding=3, text=[plus_name])
                             audio.save()
                             pairs_counter += 1
                             pairs.controls.append(ft.Text(f"{pairs_counter}. {minus_name} : {plus_name}"))
+                progress_bar_container.controls.pop()
+                page.update()
                 pair_operation_label.value = f'Пары | {pairs_counter}/{len(minus_paths)}:'
                 pair_operation_label.update()
                 pairs.update()
@@ -108,6 +122,7 @@ def main(page: ft.Page):
     page.overlay.append(pick_files_dialog)
     create_pairs = ft.Checkbox(label="Создавать пару", value=False)
     page.theme = ft.Theme(color_scheme_seed='green')
+    progress_bar_container = ft.Column()
     page.add(
         ft.Container(
             ft.Stack(
@@ -127,11 +142,13 @@ def main(page: ft.Page):
                             create_pairs
                         ]
                     ),
+
                 ]
             ),
             padding=5,
             border_radius=8,
         ),
+        progress_bar_container,
         ft.Row(controls=[
             operation_label,
         ]),
